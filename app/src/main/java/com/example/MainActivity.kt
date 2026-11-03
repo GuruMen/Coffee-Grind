@@ -61,6 +61,7 @@ import com.example.ui.screens.CompassScreen
 import com.example.ui.screens.ConverterScreen
 import com.example.ui.screens.DatabaseScreen
 import com.example.ui.screens.JournalScreen
+import com.example.ui.screens.ScaleScreen
 import com.example.ui.screens.TimerScreen
 import com.example.ui.screens.WaterScreen
 import com.example.ui.theme.CoffeeAmber
@@ -298,6 +299,7 @@ fun MainAppScreen(
         ) {
             when (currentTab) {
                 AppTab.CALCULATOR -> CalculatorScreen(viewModel = viewModel)
+                AppTab.SCALE -> ScaleScreen(viewModel = viewModel)
                 AppTab.TIMER -> TimerScreen(viewModel = viewModel)
                 AppTab.COMPASS -> CompassScreen(viewModel = viewModel)
                 AppTab.CONVERTER -> ConverterScreen(viewModel = viewModel)

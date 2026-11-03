@@ -1,9 +1,11 @@
 package com.example
 
 import com.example.data.local.CoffeeBeanEntity
+import com.example.data.model.BleScalePacketParser
 import com.example.data.model.CoffeeOriginsHelper
 import com.example.data.model.Grinder
 import com.example.data.model.GrinderCalculator
+import com.example.data.model.ScaleBrandProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -118,5 +120,36 @@ class ExampleUnitTest {
         val fresh = CoffeeOriginsHelper.calculateFreshness(todayStr)
         assertEquals(0, fresh.daysOffRoast)
         assertTrue(fresh.statusText.contains("0 дн"))
+    }
+
+    @Test
+    fun testBleScaleProtocolDetection() {
+        assertEquals(ScaleBrandProtocol.ACAIA, ScaleBrandProtocol.detectFromDeviceName("ACAIA LUNAR"))
+        assertEquals(ScaleBrandProtocol.DECENT, ScaleBrandProtocol.detectFromDeviceName("Decent Scale"))
+        assertEquals(ScaleBrandProtocol.BOOKOO, ScaleBrandProtocol.detectFromDeviceName("BOOKOO_SC"))
+        assertEquals(ScaleBrandProtocol.FUTULA_KOFEZAVR, ScaleBrandProtocol.detectFromDeviceName("LFScale CK811"))
+        assertEquals(ScaleBrandProtocol.TIMEMORE, ScaleBrandProtocol.detectFromDeviceName("Timemore Black Mirror"))
+        assertEquals(ScaleBrandProtocol.DIFLUID, ScaleBrandProtocol.detectFromDeviceName("Microbalance Ti"))
+    }
+
+    @Test
+    fun testBleScalePacketParsing() {
+        // Decent Scale packet: [0x03, 0xCE, 0x00, 0xFA, 0x00, 0x00, 0x00] -> 250 / 10 = 25.0 g
+        val decentPacket = byteArrayOf(0x03, 0xCE.toByte(), 0x00, 0xFA.toByte(), 0x00, 0x00, 0x00)
+        val decentWeight = BleScalePacketParser.parseWeightGrams(decentPacket, ScaleBrandProtocol.DECENT)
+        assertNotNull(decentWeight)
+        assertEquals(25.0f, decentWeight!!, 0.05f)
+
+        // Futula / LFScale CK811 packet: [0xCF, 0x00, 0x00, 0x01, 0x2C, 0x00] -> 300 / 10 = 30.0 g
+        val futulaPacket = byteArrayOf(0xCF.toByte(), 0x00, 0x00, 0x01, 0x2C, 0x00)
+        val futulaWeight = BleScalePacketParser.parseWeightGrams(futulaPacket, ScaleBrandProtocol.FUTULA_KOFEZAVR)
+        assertNotNull(futulaWeight)
+        assertEquals(30.0f, futulaWeight!!, 0.05f)
+
+        // ASCII scale packet (e.g., DIY ESP32 or Felicita ASCII stream)
+        val asciiPacket = "+ 18.5 g".toByteArray(Charsets.UTF_8)
+        val asciiWeight = BleScalePacketParser.parseWeightGrams(asciiPacket, ScaleBrandProtocol.STANDARD_GATT)
+        assertNotNull(asciiWeight)
+        assertEquals(18.5f, asciiWeight!!, 0.05f)
     }
 }

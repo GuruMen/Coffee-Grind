@@ -944,18 +944,25 @@ fun CalculatorScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = { viewModel.switchTab(AppTab.TIMER) },
-                        modifier = Modifier.weight(1f).height(42.dp),
+                        onClick = { viewModel.switchTab(AppTab.SCALE) },
+                        modifier = Modifier.weight(1.1f).height(42.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = CoffeeAmber)
                     ) {
-                        Text("⏱ К таймеру", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("⚖️ Весы BLE", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = { viewModel.switchTab(AppTab.TIMER) },
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = CoffeeDarkElevated)
+                    ) {
+                        Text("⏱ Таймер", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurface)
                     }
                     Button(
                         onClick = { viewModel.switchTab(AppTab.COMPASS) },
                         modifier = Modifier.weight(1f).height(42.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = CoffeeDarkElevated)
                     ) {
-                        Text("🧭 Диагностика", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                        Text("🧭 Компас", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }

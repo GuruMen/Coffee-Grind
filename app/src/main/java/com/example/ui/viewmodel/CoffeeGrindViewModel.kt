@@ -3,6 +3,8 @@ package com.example.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.ble.BleConnectionState
+import com.example.data.ble.BleScaleClient
 import com.example.data.local.CoffeeBeanEntity
 import com.example.data.local.GarageSettingEntity
 import com.example.data.local.JournalEntryEntity
@@ -15,12 +17,16 @@ import com.example.data.model.BrewProtocol
 import com.example.data.model.BrewProtocols
 import com.example.data.model.BrewTimeProfile
 import com.example.data.model.Category
+import com.example.data.model.DiscoveredBleScale
 import com.example.data.model.ExtractionCompassCalculator
 import com.example.data.model.ExtractionDiagnosis
 import com.example.data.model.Grinder
 import com.example.data.model.GrinderCalculator
 import com.example.data.model.RoastLevel
+import com.example.data.model.ScaleBrandProtocol
+import com.example.data.model.ScaleBrewMode
 import com.example.data.model.TasteProfile
+import com.example.data.model.TelemetryPoint
 import com.example.data.model.WaterCalculator
 import com.example.data.model.WaterTempCalculator
 import com.example.data.model.WaterTempRecommendation
@@ -40,6 +46,7 @@ import kotlin.math.roundToInt
 
 enum class AppTab(val title: String, val icon: String) {
     CALCULATOR("Калькулятор", "☕"),
+    SCALE("Весы BLE", "⚖️"),
     TIMER("Таймер", "⏱"),
     COMPASS("Компас", "🧭"),
     CONVERTER("Конвертер", "⇄"),
@@ -105,9 +112,37 @@ data class WaterUiState(
     val blendTotalVol: Float = 1000f
 )
 
+data class ScaleUiState(
+    val connectionState: BleConnectionState = BleConnectionState.DISCONNECTED,
+    val statusMessage: String = "Готов к подключению умных весов (BLE)",
+    val connectedScaleName: String? = null,
+    val selectedProtocol: ScaleBrandProtocol = ScaleBrandProtocol.FUTULA_KOFEZAVR,
+    val discoveredDevices: List<DiscoveredBleScale> = emptyList(),
+    val brewMode: ScaleBrewMode = ScaleBrewMode.POUR_OVER,
+    val currentWeightG: Float = 0.0f,
+    val currentFlowRateGps: Float = 0.0f,
+    val peakFlowRateGps: Float = 0.0f,
+    val avgFlowRateGps: Float = 0.0f,
+    val doseG: Float = 16.0f,
+    val targetWeightG: Float = 250.0f,
+    val elapsedDeciSeconds: Int = 0, // 0.1s resolution
+    val isTimerRunning: Boolean = false,
+    val autoStartOnFlow: Boolean = true,
+    val autoTareOnStart: Boolean = true,
+    val autoStopOnTarget: Boolean = true,
+    val isSimulatingPour: Boolean = false,
+    val telemetryPoints: List<TelemetryPoint> = emptyList()
+) {
+    val liveBrewRatio: Float
+        get() = if (doseG > 0.1f) ((currentWeightG / doseG) * 10f).roundToInt() / 10f else 0f
+    val elapsedSecondsFloat: Float
+        get() = elapsedDeciSeconds / 10f
+}
+
 class CoffeeGrindViewModel(application: Application) : AndroidViewModel(application) {
 
     val repository = CoffeeGrindRepository(application)
+    val bleScaleClient = BleScaleClient(application)
     private val audioHaptics = TimerAudioAndHaptics(application)
 
     private val _currentTab = MutableStateFlow(AppTab.CALCULATOR)
@@ -115,6 +150,9 @@ class CoffeeGrindViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _calcState = MutableStateFlow(CalculatorUiState())
     val calcState: StateFlow<CalculatorUiState> = _calcState.asStateFlow()
+
+    private val _scaleState = MutableStateFlow(ScaleUiState())
+    val scaleState: StateFlow<ScaleUiState> = _scaleState.asStateFlow()
 
     private val _timerState = MutableStateFlow(TimerUiState())
     val timerState: StateFlow<TimerUiState> = _timerState.asStateFlow()
@@ -233,7 +271,78 @@ class CoffeeGrindViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
         }
+
+        // Observe BLE scale client flows
+        viewModelScope.launch {
+            combine(
+                bleScaleClient.connectionState,
+                bleScaleClient.statusMessage,
+                bleScaleClient.connectedScaleName,
+                bleScaleClient.selectedProtocol,
+                bleScaleClient.discoveredDevices
+            ) { conn, msg, name, proto, devices ->
+                ScaleClientSnapshot(conn, msg, name, proto, devices)
+            }.collect { snap ->
+                _scaleState.update {
+                    it.copy(
+                        connectionState = snap.conn,
+                        statusMessage = snap.msg,
+                        connectedScaleName = snap.name,
+                        selectedProtocol = snap.proto,
+                        discoveredDevices = snap.devices
+                    )
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            var lastWeight = 0f
+            var lastTimestampMs = System.currentTimeMillis()
+            bleScaleClient.rawWeightGrams.collect { newWeight ->
+                val now = System.currentTimeMillis()
+                val dtSec = ((now - lastTimestampMs).coerceAtLeast(50)) / 1000f
+                val dW = newWeight - lastWeight
+                val instantFlow = if (dtSec > 0f && dW > 0.05f) (dW / dtSec).coerceIn(0f, 35f) else 0f
+                lastWeight = newWeight
+                lastTimestampMs = now
+
+                val st = _scaleState.value
+                val smoothedFlow = ((st.currentFlowRateGps * 0.5f + instantFlow * 0.5f) * 10f).roundToInt() / 10f
+
+                // Auto-start timer on first drop / flow (> 0.6g rise)
+                if (!st.isTimerRunning && st.autoStartOnFlow && st.elapsedDeciSeconds == 0 && newWeight >= 0.8f && dW > 0.2f) {
+                    startScaleSessionTimer(fromAutoFlow = true)
+                }
+
+                // Auto-stop timer when target weight is reached
+                if (st.isTimerRunning && st.autoStopOnTarget && st.targetWeightG > 5f && newWeight >= st.targetWeightG) {
+                    pauseScaleSessionTimer()
+                    audioHaptics.playFinishAlert(_timerState.value.soundEnabled, _timerState.value.vibroEnabled)
+                }
+
+                _scaleState.update { cur ->
+                    val newPeak = maxOf(cur.peakFlowRateGps, smoothedFlow)
+                    val avg = if (cur.elapsedSecondsFloat > 0.5f && newWeight > 0f) {
+                        ((newWeight / cur.elapsedSecondsFloat) * 10f).roundToInt() / 10f
+                    } else cur.avgFlowRateGps
+                    cur.copy(
+                        currentWeightG = (newWeight * 10f).roundToInt() / 10f,
+                        currentFlowRateGps = smoothedFlow,
+                        peakFlowRateGps = newPeak,
+                        avgFlowRateGps = avg
+                    )
+                }
+            }
+        }
     }
+
+    private data class ScaleClientSnapshot(
+        val conn: BleConnectionState,
+        val msg: String,
+        val name: String?,
+        val proto: ScaleBrandProtocol,
+        val devices: List<DiscoveredBleScale>
+    )
 
     fun switchTab(tab: AppTab) {
         _currentTab.value = tab
@@ -803,9 +912,282 @@ class CoffeeGrindViewModel(application: Application) : AndroidViewModel(applicat
         switchTab(AppTab.CALCULATOR)
     }
 
+    // --- BLE SMART SCALE & BEANZEN TELEMETRY ACTIONS ---
+
+    private var scaleTimerJob: Job? = null
+    private var virtualPourJob: Job? = null
+
+    fun selectScaleProtocol(protocol: ScaleBrandProtocol) {
+        bleScaleClient.selectProtocol(protocol)
+    }
+
+    fun startBleScaleScan() {
+        bleScaleClient.startScan()
+    }
+
+    fun stopBleScaleScan() {
+        bleScaleClient.stopScan()
+    }
+
+    fun connectBleScale(device: DiscoveredBleScale) {
+        bleScaleClient.connectToDevice(device)
+    }
+
+    fun disconnectBleScale() {
+        stopVirtualPourSimulation()
+        bleScaleClient.disconnect()
+    }
+
+    fun activateVirtualScale() {
+        bleScaleClient.activateVirtualSimulator()
+        // Sync dose & target weight from calculator
+        _scaleState.update {
+            it.copy(
+                doseG = _calcState.value.dose,
+                targetWeightG = _calcState.value.totalWater.toFloat()
+            )
+        }
+    }
+
+    fun tareScale() {
+        bleScaleClient.sendTare()
+        _scaleState.update {
+            it.copy(
+                currentWeightG = 0f,
+                currentFlowRateGps = 0f
+            )
+        }
+    }
+
+    fun setScaleBrewMode(mode: ScaleBrewMode) {
+        stopVirtualPourSimulation()
+        resetScaleSession()
+        _scaleState.update {
+            it.copy(
+                brewMode = mode,
+                doseG = mode.defaultDoseG,
+                targetWeightG = mode.defaultTargetWeightG
+            )
+        }
+    }
+
+    fun setScaleDose(dose: Float) {
+        val clean = dose.coerceIn(1f, 150f)
+        _scaleState.update { it.copy(doseG = clean) }
+        updateDose(clean)
+    }
+
+    fun setScaleTargetWeight(target: Float) {
+        val clean = target.coerceIn(5f, 2000f)
+        _scaleState.update { it.copy(targetWeightG = clean) }
+    }
+
+    fun toggleAutoStartOnFlow() {
+        _scaleState.update { it.copy(autoStartOnFlow = !it.autoStartOnFlow) }
+    }
+
+    fun toggleAutoTareOnStart() {
+        _scaleState.update { it.copy(autoTareOnStart = !it.autoTareOnStart) }
+    }
+
+    fun toggleAutoStopOnTarget() {
+        _scaleState.update { it.copy(autoStopOnTarget = !it.autoStopOnTarget) }
+    }
+
+    fun toggleScaleSessionTimer() {
+        if (_scaleState.value.isTimerRunning) {
+            pauseScaleSessionTimer()
+        } else {
+            startScaleSessionTimer(fromAutoFlow = false)
+        }
+    }
+
+    fun startScaleSessionTimer(fromAutoFlow: Boolean = false) {
+        if (_scaleState.value.isTimerRunning) return
+        if (!fromAutoFlow && _scaleState.value.autoTareOnStart && _scaleState.value.elapsedDeciSeconds == 0) {
+            bleScaleClient.sendTare()
+        }
+        _scaleState.update { it.copy(isTimerRunning = true) }
+        audioHaptics.playStepAlert(_timerState.value.soundEnabled, _timerState.value.vibroEnabled)
+
+        scaleTimerJob?.cancel()
+        scaleTimerJob = viewModelScope.launch {
+            while (_scaleState.value.isTimerRunning) {
+                delay(200) // 5 Hz telemetry recording
+                _scaleState.update { cur ->
+                    val nextDeci = cur.elapsedDeciSeconds + 2
+                    val tSec = nextDeci / 10f
+                    val pt = TelemetryPoint(
+                        timeSec = tSec,
+                        weightGrams = cur.currentWeightG,
+                        flowRateGps = cur.currentFlowRateGps
+                    )
+                    val updatedPoints = (cur.telemetryPoints + pt).takeLast(600)
+                    cur.copy(
+                        elapsedDeciSeconds = nextDeci,
+                        telemetryPoints = updatedPoints
+                    )
+                }
+            }
+        }
+    }
+
+    fun pauseScaleSessionTimer() {
+        scaleTimerJob?.cancel()
+        _scaleState.update { it.copy(isTimerRunning = false, currentFlowRateGps = 0f) }
+    }
+
+    fun resetScaleSession() {
+        scaleTimerJob?.cancel()
+        stopVirtualPourSimulation()
+        bleScaleClient.updateVirtualWeight(0f)
+        _scaleState.update {
+            it.copy(
+                currentWeightG = 0f,
+                currentFlowRateGps = 0f,
+                peakFlowRateGps = 0f,
+                avgFlowRateGps = 0f,
+                elapsedDeciSeconds = 0,
+                isTimerRunning = false,
+                telemetryPoints = emptyList()
+            )
+        }
+    }
+
+    fun addVirtualWaterDelta(gramsDelta: Float) {
+        if (_scaleState.value.connectionState != BleConnectionState.VIRTUAL_SIMULATOR) {
+            activateVirtualScale()
+        }
+        val next = (_scaleState.value.currentWeightG + gramsDelta).coerceIn(0f, 2000f)
+        bleScaleClient.updateVirtualWeight(next)
+    }
+
+    fun startVirtualPourSimulation() {
+        if (_scaleState.value.connectionState != BleConnectionState.VIRTUAL_SIMULATOR) {
+            activateVirtualScale()
+        }
+        if (_scaleState.value.isSimulatingPour) {
+            stopVirtualPourSimulation()
+            return
+        }
+
+        resetScaleSession()
+        _scaleState.update { it.copy(isSimulatingPour = true) }
+        if (!_scaleState.value.autoStartOnFlow) {
+            startScaleSessionTimer(fromAutoFlow = false)
+        }
+
+        virtualPourJob?.cancel()
+        virtualPourJob = viewModelScope.launch {
+            val mode = _scaleState.value.brewMode
+            val targetW = _scaleState.value.targetWeightG
+            var simWeight = 0f
+            var tick = 0
+
+            while (_scaleState.value.isSimulatingPour && simWeight < targetW) {
+                delay(200)
+                tick++
+                val sec = tick * 0.2f
+
+                val flowRateGps = when (mode) {
+                    ScaleBrewMode.ESPRESSO -> {
+                        // Pre-infusion 0..6s, ramp up 6..18s, steady 18..28s
+                        when {
+                            sec < 5f -> 0.3f
+                            sec < 12f -> 1.4f
+                            sec < 24f -> 2.1f
+                            else -> 1.5f
+                        }
+                    }
+                    ScaleBrewMode.DRIP_BAG -> {
+                        // 3 pulses of pouring with pauses
+                        val cycle = (sec % 24f)
+                        if (cycle < 10f) 4.2f else 0.0f
+                    }
+                    ScaleBrewMode.POUR_OVER -> {
+                        // Bloom 0..10s, pause 10..30s, active pours
+                        when {
+                            sec < 8f -> 5.8f
+                            sec < 24f -> 0.0f
+                            sec < 42f -> 6.4f
+                            sec < 52f -> 0.0f
+                            sec < 75f -> 5.2f
+                            else -> 3.0f
+                        }
+                    }
+                }
+
+                simWeight = (simWeight + flowRateGps * 0.2f).coerceAtMost(targetW)
+                bleScaleClient.updateVirtualWeight(simWeight)
+
+                if (simWeight >= targetW) {
+                    _scaleState.update { it.copy(isSimulatingPour = false) }
+                    pauseScaleSessionTimer()
+                    break
+                }
+            }
+        }
+    }
+
+    fun stopVirtualPourSimulation() {
+        virtualPourJob?.cancel()
+        _scaleState.update { it.copy(isSimulatingPour = false) }
+    }
+
+    fun saveScaleSessionToJournal(notesExtra: String = "") {
+        val sc = _scaleState.value
+        val calc = _calcState.value
+        val g = calc.currentGrinder
+        val m = calc.currentMethod
+        val settingStr = if (g != null) {
+            val pos = GrinderCalculator.micronsToPosition(calc.targetMicrons, g)
+            "${GrinderCalculator.formatPosition(pos, g, calc.zeroOffset)} (${calc.targetMicrons} μm)"
+        } else "${calc.targetMicrons} μm"
+
+        val totalSec = (sc.elapsedSecondsFloat).roundToInt()
+        val mm = totalSec / 60
+        val ss = totalSec % 60
+        val timeFormatted = String.format("%d:%02d", mm, ss)
+
+        val autoNote = buildString {
+            append("Весы: ${sc.connectedScaleName ?: sc.selectedProtocol.title} • ")
+            append("Режим: ${sc.brewMode.title} • ")
+            append("Ratio 1:${sc.liveBrewRatio} • ")
+            append("Средний поток: ${sc.avgFlowRateGps} г/с (пик ${sc.peakFlowRateGps} г/с)")
+            if (notesExtra.isNotBlank()) {
+                append(" • $notesExtra")
+            }
+        }
+
+        addJournalEntry(
+            coffeeName = "Заваривание с BLE-весами (${sc.brewMode.title})",
+            roaster = sc.selectedProtocol.title,
+            process = calc.beanModifiers.process.label,
+            roastLevel = calc.beanModifiers.roast.label,
+            methodId = when (sc.brewMode) {
+                ScaleBrewMode.ESPRESSO -> "espresso"
+                ScaleBrewMode.DRIP_BAG -> "pour_over"
+                ScaleBrewMode.POUR_OVER -> m?.id ?: "v60"
+            },
+            grinder = g?.fullName ?: "Не указана",
+            setting = settingStr,
+            microns = calc.targetMicrons,
+            dose = sc.doseG,
+            water = sc.currentWeightG.coerceAtLeast(sc.targetWeightG),
+            temp = calc.waterTempRec?.optimalTemp ?: 93,
+            time = timeFormatted,
+            rating = 5,
+            notes = autoNote
+        )
+        switchTab(AppTab.JOURNAL)
+    }
+
     override fun onCleared() {
         super.onCleared()
         timerJob?.cancel()
+        scaleTimerJob?.cancel()
+        virtualPourJob?.cancel()
+        bleScaleClient.disconnect()
         audioHaptics.release()
     }
 }
