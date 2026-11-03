@@ -1,6 +1,11 @@
 # ☕ Coffee Grind Calculator & Coffee Bean Journal
 
-Нативное Android-приложение для бариста и ценителей спешелти кофе, написанное на **Kotlin** и **Jetpack Compose** (Material 3).
+[![License: MIT](https://img.shields.io/badge/License-MIT-amber.svg)](./LICENSE)
+[![Platform: Android](https://img.shields.io/badge/Platform-Android_24%2B-34D399.svg)](https://developer.android.com)
+[![Kotlin](https://img.shields.io/badge/Kotlin-Jetpack_Compose-7F52FF.svg)](https://kotlinlang.org)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-38BDF8.svg)](./CONTRIBUTING.md)
+
+Открытое (Open Source) нативное Android-приложение для бариста и ценителей спешелти кофе, написанное на **Kotlin** и **Jetpack Compose** (Material 3).
 
 Приложение включает в себя калькулятор помола для **228 моделей ручных и электрических кофемолок** (75 мировых брендов) на основе данных *Honest Coffee Guide*, пошаговый таймер заваривания, интерактивный компас экстракции, конвертер делений между кофемолками, дневник зерна с отслеживанием свежести обжарки и калькулятор минерализации воды.
 
@@ -151,5 +156,16 @@ gradle testDebugUnitTest
 
 ---
 
+## 🤝 Участие в разработке (Contributing)
+
+Проект полностью открыт для сообщества! Мы будем рады вашим Pull Request'ам — добавлению новых кофемолок, рецептов заваривания или улучшению интерфейса.
+
+- Ознакомьтесь с [Руководством по участию в разработке (CONTRIBUTING.md)](./CONTRIBUTING.md), где подробно описан формат базы данных `coffee_data.json` и процесс отправки изменений.
+- Пожалуйста, соблюдайте наш [Кодекс поведения (CODE_OF_CONDUCT.md)](./CODE_OF_CONDUCT.md).
+
+---
+
 ## 📄 Лицензия и источники данных
-База калибровок и настройки кофемолок основаны на открытых данных [Honest Coffee Guide](https://honestcoffeeguide.com/coffee-grind-size-chart/).
+
+- Распространяется под открытой лицензией **[MIT License](./LICENSE)** — вы можете свободно использовать, изучать, модифицировать и распространять код проекта.
+- База калибровок и настройки кофемолок основаны на открытых данных [Honest Coffee Guide](https://honestcoffeeguide.com/coffee-grind-size-chart/).
