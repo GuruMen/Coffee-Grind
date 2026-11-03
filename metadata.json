@@ -1,0 +1,6 @@
+{
+  "name": "Coffee Grind",
+  "description": "Калькулятор помола кофе на 228 моделей, таймер заваривания, компас экстракции и дневник зерна",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
