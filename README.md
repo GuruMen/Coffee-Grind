@@ -116,6 +116,17 @@
 
 ---
 
+## 📦 Готовый APK и Android App Bundle (Релиз v2.0)
+
+В репозитории уже находятся готовые подписанные релизные сборки (APK Signature Scheme v2):
+
+- 📲 **[Скачать подписанный APK (`coffee-grind-calculator.apk`)](./coffee-grind-calculator.apk)** *(для прямой установки на Android-смартфон)*
+- 📁 Папка [`/releases`](./releases):
+  - [`releases/coffee-grind-calculator-v2.0-release.apk`](./releases/coffee-grind-calculator-v2.0-release.apk) — подписанный Release APK (16 МБ)
+  - [`releases/coffee-grind-calculator-v2.0-release.aab`](./releases/coffee-grind-calculator-v2.0-release.aab) — подписанный Android App Bundle для Google Play (15 МБ)
+
+---
+
 ## 🚀 Сборка и запуск проекта
 
 ### Требования:
@@ -127,6 +138,12 @@
 ```bash
 # Сборка Debug APK:
 gradle assembleDebug
+
+# Сборка подписанного Release APK:
+STORE_PASSWORD=coffee123 KEY_PASSWORD=coffee123 gradle :app:assembleRelease
+
+# Сборка подписанного Release App Bundle (.aab):
+STORE_PASSWORD=coffee123 KEY_PASSWORD=coffee123 gradle :app:bundleRelease
 
 # Запуск тестов:
 gradle testDebugUnitTest
