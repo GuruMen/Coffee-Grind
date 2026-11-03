@@ -1,0 +1,3 @@
+97f3baf4c445229ffeccb1fe9add73bc7bcc4a3ce3e803fde8973b8d28e72656  coffee-grind-calculator.apk
+97f3baf4c445229ffeccb1fe9add73bc7bcc4a3ce3e803fde8973b8d28e72656  releases/coffee-grind-calculator-v2.0-release.apk
+ca3b4ce42be7f483301c343656393d8381a4f0e57acf59cbece8001c6031c739  releases/coffee-grind-calculator-v2.0-release.aab

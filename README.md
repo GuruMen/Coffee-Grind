@@ -121,14 +121,17 @@
 
 ---
 
-## 📦 Готовый APK и Android App Bundle (Релиз v2.0)
+## 📦 Готовый APK и Android App Bundle (Релиз v2.0.0)
 
-В репозитории уже находятся готовые подписанные релизные сборки (APK Signature Scheme v2):
+В репозитории опубликован официальный релиз **v2.0.0** (APK Signature Scheme v2):
 
 - 📲 **[Скачать подписанный APK (`coffee-grind-calculator.apk`)](./coffee-grind-calculator.apk)** *(для прямой установки на Android-смартфон)*
 - 📁 Папка [`/releases`](./releases):
   - [`releases/coffee-grind-calculator-v2.0-release.apk`](./releases/coffee-grind-calculator-v2.0-release.apk) — подписанный Release APK (16 МБ)
   - [`releases/coffee-grind-calculator-v2.0-release.aab`](./releases/coffee-grind-calculator-v2.0-release.aab) — подписанный Android App Bundle для Google Play (15 МБ)
+  - [`releases/RELEASE_NOTES_v2.0.0.md`](./releases/RELEASE_NOTES_v2.0.0.md) — описание релиза v2.0.0
+  - [`releases/SHA256SUMS.txt`](./releases/SHA256SUMS.txt) — контрольные суммы SHA-256
+- 📜 **[Полная история изменений (CHANGELOG.md)](./CHANGELOG.md)**
 
 ---
 

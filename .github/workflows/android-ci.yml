@@ -1,11 +1,16 @@
-name: Android CI & Release Build
+name: Android CI & GitHub Release
 
 on:
   push:
     branches: [ "main" ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-and-test:
@@ -33,3 +38,13 @@ jobs:
         with:
           name: coffee-grind-calculator-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Publish GitHub Release on Tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: releases/RELEASE_NOTES_v2.0.0.md
+          files: |
+            releases/coffee-grind-calculator-v2.0-release.apk
+            releases/coffee-grind-calculator-v2.0-release.aab
+            releases/SHA256SUMS.txt
